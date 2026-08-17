@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kasir - 2On2Off Service</title>
+    <!-- Library untuk Generate PDF Thermal -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 15px;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 950px;
+            margin: 0 auto;
+        }
+        .form-section {
+            flex: 1.2;
+            min-width: 320px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .preview-section {
+            flex: 1;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { margin-top: 0; font-size: 1.1rem; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.85rem; }
+        input[type="text"], input[type="number"], input[type="file"] {
+            width: 100%;
+            padding: 9px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+        }
+        .item-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .item-row input[type="text"] { flex: 2; }
+        .item-row input.item-qty { flex: 0.8; }
+        .item-row input.item-price { flex: 1.5; }
+        .btn-remove-item {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            cursor: pointer;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+        .btn-add { background-color: #28a745; color: white; width: 100%; }
+        .btn-pdf { background-color: #dc3545; color: white; }
+        .btn-print { background-color: #007bff; color: white; }
+        .btn-reset-logo {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            margin-top: 6px;
+            display: none;
+        }
+
+        /* ======================================================== */
+        /* STYLING STRUK THERMAL (UNTUK TAMPILAN LAYAR & PDF)      */
+        /* ======================================================== */
+        #receipt {
+            width: 58mm;
+            max-width: 58mm;
+            min-width: 58mm;
+            background: #fff;
+            padding: 6px 3mm;
+            font-family: 'Arial Narrow', Arial, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            line-height: 1.25;
+            letter-spacing: -0.1px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.15);
+            box-sizing: border-box;
+            color: #000;
+            overflow: hidden;
+        }
+        .text-center { text-align: center; }
+        .bold { font-weight: 900; }
+        .divider { border-top: 1px dashed #000; margin: 5px 0; }
+        
+        .logo-container {
+            text-align: center;
+            margin-bottom: 4px;
+        }
+        #printLogoImg {
+            max-width: 38mm;
+            max-height: 26mm;
+            display: none;
+            margin: 0 auto;
+            filter: grayscale(100%) contrast(250%);
+        }
+        .logo-placeholder {
+            border: 1.5px solid #000;
+            display: inline-block;
+            padding: 2px 6px;
+            font-weight: 900;
+            font-size: 13px;
+            margin: 0 auto;
+        }
+
+        .header-sub { font-size: 10px; line-height: 1.15; font-weight: normal; }
+        .flex-between { display: flex; justify-content: space-between; gap: 2px; }
+        .item-detail {
+            font-size: 10px;
+            color: #000;
+            padding-left: 2px;
+            margin-bottom: 1px;
+            font-weight: normal;
+        }
+        .grand-total { font-size: 14px; font-weight: 900; margin-top: 4px; }
+
+        /* ======================================================== */
+        /* ATURAN UNTUK PRINTER FISIK (DIGESER KE KANAN SIKIT)      */
+        /* ======================================================== */
+        @media print {
+            html, body {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            body * { visibility: hidden; }
+            #receipt, #receipt * { visibility: visible; }
+            #receipt {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 58mm !important;
+                box-shadow: none !important;
+                /* PUSH MARGIN KIRI KE KANAN UTK HEAD EPPOS */
+                padding-top: 2px !important;
+                padding-bottom: 2px !important;
+                padding-left: 4.5mm !important; /* Ditambah dari 2mm ke 4.5mm agar geser ke kanan */
+                padding-right: 1.5mm !important;
+                margin: 0 !important;
+            }
+            @page { 
+                size: 58mm auto; 
+                margin: 0mm; 
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Form Input Transaksi -->
+    <div class="form-section">
+        <h2>Input Transaksi Service</h2>
+        
+        <div class="form-group">
+            <label>Upload Logo Workshop (Tersimpan Otomatis)</label>
+            <input type="file" id="inputLogo" accept="image/*" onchange="uploadAndSaveLogo(event)">
+            <button class="btn-reset-logo" id="btnResetLogo" onclick="resetSavedLogo()">🔄 Ganti / Hapus Logo</button>
+        </div>
+
+        <div class="form-group">
+            <label>Nama Customer</label>
+            <input type="text" id="inputCustomer" value="Temen wahyu" oninput="updateReceipt()">
+        </div>
+        <div class="form-group">
+            <label>No. Bill / Nota</label>
+            <input type="text" id="inputBillNo" value="INV-001" oninput="updateReceipt()">
+        </div>
+
+        <label>Detail Item / Jasa (Nama | Qty Opsional | Harga)</label>
+        <div id="itemsContainer">
+            <div class="item-row">
+                <input type="text" class="item-name" value="Replace lcd" placeholder="Nama Barang/Jasa" oninput="updateReceipt()">
+                <input type="number" class="item-qty" placeholder="Qty" oninput="updateReceipt()">
+                <input type="number" class="item-price" value="721000" placeholder="Harga" oninput="updateReceipt()">
+                <button class="btn-remove-item" onclick="removeItem(this)">×</button>
+            </div>
+            <div class="item-row">
+                <input type="text" class="item-name" value="Jasanya" placeholder="Nama Barang/Jasa" oninput="updateReceipt()">
+                <input type="number" class="item-qty" placeholder="Qty" oninput="updateReceipt()">
+                <input type="number" class="item-price" value="200000" placeholder="Harga" oninput="updateReceipt()">
+                <button class="btn-remove-item" onclick="removeItem(this)">×</button>
+            </div>
+        </div>
+        
+        <button class="btn-add" onclick="addItem()">+ Tambah Baris Item</button>
+
+        <div class="btn-group">
+            <button class="btn-pdf" onclick="exportToPDF()">📄 Simpan / Cetak PDF</button>
+            <button class="btn-print" onclick="window.print()">🖨️ Print Langsung</button>
+        </div>
+    </div>
+
+    <!-- Preview Struk Thermal -->
+    <div class="preview-section">
+        <h2>Preview Struk</h2>
+        <div id="receipt">
+            
+            <!-- Logo Paling Atas -->
+            <div class="logo-container">
+                <img id="printLogoImg" alt="Logo Workshop">
+                <div id="printLogoText" class="logo-placeholder">2On2Off Service</div>
+            </div>
+
+            <div class="text-center header-sub">
+                Jl Padat karya No.22 Kec.Balikpapan Utara<br>
+                No: 082252918440 | IG: 2on2offservice
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex-between">
+                <span>Customer:</span>
+                <span id="printCustomer" class="bold">Temen wahyu</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex-between">
+                <span>Date:</span>
+                <span id="printDate"></span>
+            </div>
+            <div class="flex-between">
+                <span>Bill No:</span>
+                <span id="printBillNo">INV-001</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex-between bold">
+                <span>Item</span>
+                <span>Amount</span>
+            </div>
+
+            <!-- List Items -->
+            <div id="printItemsList"></div>
+
+            <div class="divider"></div>
+
+            <div class="flex-between">
+                <span>1/1</span>
+                <span>1</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="flex-between grand-total">
+                <span>Est Grand Total</span>
+                <span id="printGrandTotal">Rp 0</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // AUTO-SAVE LOGO DENGAN LOCALSTORAGE
+    function loadSavedLogo() {
+        const savedLogo = localStorage.getItem('app_saved_logo');
+        const img = document.getElementById('printLogoImg');
+        const textPlaceholder = document.getElementById('printLogoText');
+        const btnReset = document.getElementById('btnResetLogo');
+
+        if (savedLogo) {
+            img.src = savedLogo;
+            img.style.display = 'block';
+            textPlaceholder.style.display = 'none';
+            btnReset.style.display = 'inline-block';
+        } else {
+            img.style.display = 'none';
+            img.src = '';
+            textPlaceholder.style.display = 'inline-block';
+            btnReset.style.display = 'none';
+        }
+    }
+
+    function uploadAndSaveLogo(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Image = e.target.result;
+                localStorage.setItem('app_saved_logo', base64Image);
+                loadSavedLogo();
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function resetSavedLogo() {
+        if (confirm("Apakah Anda yakin ingin menghapus/mengganti logo tersimpan?")) {
+            localStorage.removeItem('app_saved_logo');
+            document.getElementById('inputLogo').value = '';
+            loadSavedLogo();
+        }
+    }
+
+    // FORMAT & LOGIKA PENAMPILAN ITEM
+    function formatRupiah(angka) {
+        return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka).replace('Rp', 'Rp ');
+    }
+
+    function setTodayDate() {
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yyyy = today.getFullYear();
+        document.getElementById('printDate').innerText = `${dd}/${mm}/${yyyy}`;
+    }
+
+    function addItem() {
+        const container = document.getElementById('itemsContainer');
+        const newRow = document.createElement('div');
+        newRow.className = 'item-row';
+        newRow.innerHTML = `
+            <input type="text" class="item-name" placeholder="Nama Barang/Jasa" oninput="updateReceipt()">
+            <input type="number" class="item-qty" placeholder="Qty" oninput="updateReceipt()">
+            <input type="number" class="item-price" placeholder="Harga" oninput="updateReceipt()">
+            <button class="btn-remove-item" onclick="removeItem(this)">×</button>
+        `;
+        container.appendChild(newRow);
+    }
+
+    function removeItem(btn) {
+        btn.parentElement.remove();
+        updateReceipt();
+    }
+
+    function updateReceipt() {
+        document.getElementById('printCustomer').innerText = document.getElementById('inputCustomer').value || '-';
+        document.getElementById('printBillNo').innerText = document.getElementById('inputBillNo').value || '-';
+
+        const names = document.querySelectorAll('.item-name');
+        const qtys = document.querySelectorAll('.item-qty');
+        const prices = document.querySelectorAll('.item-price');
+        
+        let itemsHTML = '';
+        let total = 0;
+
+        names.forEach((input, index) => {
+            const name = input.value;
+            const qtyRaw = qtys[index].value.trim();
+            const price = parseFloat(prices[index].value) || 0;
+            
+            let subtotal = price;
+            let showQtyLine = false;
+
+            if (qtyRaw !== '' && !isNaN(parseFloat(qtyRaw))) {
+                const qtyVal = parseFloat(qtyRaw);
+                subtotal = qtyVal * price;
+                showQtyLine = true;
+            }
+            
+            if (name || price) {
+                total += subtotal;
+                itemsHTML += `
+                    <div class="flex-between" style="margin-top: 3px;">
+                        <span>${name}</span>
+                        <span>${formatRupiah(subtotal)}</span>
+                    </div>
+                `;
+                
+                if (showQtyLine) {
+                    itemsHTML += `<div class="item-detail">${qtyRaw} x ${formatRupiah(price)}</div>`;
+                }
+            }
+        });
+
+        document.getElementById('printItemsList').innerHTML = itemsHTML;
+        document.getElementById('printGrandTotal').innerText = formatRupiah(total);
+    }
+
+    function exportToPDF() {
+        const element = document.getElementById('receipt');
+        const billNo = document.getElementById('inputBillNo').value || 'Nota';
+        
+        const elementHeightPx = element.offsetHeight;
+        const heightInMm = Math.ceil(elementHeightPx * 0.264583) + 6;
+
+        const opt = {
+            margin:       0,
+            filename:     `Struk_${billNo}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { 
+                scale: 3, 
+                useCORS: true,
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: document.documentElement.offsetWidth
+            },
+            jsPDF: { unit: 'mm', format: [58, heightInMm], orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).save();
+    }
+
+    // Inisialisasi awal
+    loadSavedLogo();
+    setTodayDate();
+    updateReceipt();
+</script>
+
+</body>
+</html>
